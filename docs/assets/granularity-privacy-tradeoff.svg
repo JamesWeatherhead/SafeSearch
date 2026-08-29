@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">The SafeSearch granularity-privacy tension</title>
+  <desc id="desc">A conceptual plot showing clinical specificity and retained quasi-identifiers both increasing as ontology and vector representation granularity increases.</desc>
+  <defs>
+    <linearGradient id="risk-zone" x1="0" x2="1">
+      <stop offset="0" stop-color="#f59e0b" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#f59e0b" stop-opacity="0.16"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="618" rx="18" fill="#ffffff" stroke="#dbe3ee"/>
+  <text x="64" y="58" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="700" fill="#0f172a">The granularity-privacy tension</text>
+  <text x="64" y="91" font-family="Inter, Arial, sans-serif" font-size="17" fill="#475569">Richer ontology matching can preserve clinical context, but it can also retain a more distinctive patient profile.</text>
+
+  <g font-family="Inter, Arial, sans-serif" font-size="14">
+    <rect x="558" y="108" width="250" height="42" rx="8" fill="#ffffff" stroke="#0b4a7f"/>
+    <line x1="578" y1="129" x2="616" y2="129" stroke="#0b4a7f" stroke-width="7" stroke-linecap="round"/>
+    <text x="634" y="135" textLength="132" lengthAdjust="spacingAndGlyphs" fill="#0f172a" font-weight="600">Clinical specificity</text>
+
+    <rect x="820" y="108" width="316" height="42" rx="8" fill="#ffffff" stroke="#d35400"/>
+    <line x1="840" y1="129" x2="878" y2="129" stroke="#d35400" stroke-width="7" stroke-linecap="round"/>
+    <text x="896" y="135" textLength="184" lengthAdjust="spacingAndGlyphs" fill="#0f172a" font-weight="600">Quasi-identifiers retained</text>
+  </g>
+
+  <rect x="164" y="171" width="888" height="300" fill="#f8fafc" stroke="#e2e8f0"/>
+  <rect x="700" y="171" width="352" height="300" fill="url(#risk-zone)"/>
+
+  <g stroke="#e2e8f0" stroke-width="1">
+    <line x1="164" y1="396" x2="1052" y2="396"/>
+    <line x1="164" y1="321" x2="1052" y2="321"/>
+    <line x1="164" y1="246" x2="1052" y2="246"/>
+  </g>
+
+  <line x1="164" y1="471" x2="1070" y2="471" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="164" y1="471" x2="164" y2="157" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <path d="M 194 430 C 300 418, 370 383, 460 337 C 575 278, 670 232, 790 209 C 886 190, 958 187, 1022 186"
+        fill="none" stroke="#0b4a7f" stroke-width="8" stroke-linecap="round"/>
+  <path d="M 194 447 C 350 443, 460 433, 555 404 C 661 370, 735 321, 813 262 C 887 207, 952 184, 1022 177"
+        fill="none" stroke="#d35400" stroke-width="8" stroke-linecap="round"/>
+
+  <text x="608" y="537" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="600" fill="#0f172a">Ontology / vector representation granularity</text>
+  <text x="164" y="505" font-family="Inter, Arial, sans-serif" font-size="15" fill="#64748b">coarser</text>
+  <text x="1052" y="505" text-anchor="end" font-family="Inter, Arial, sans-serif" font-size="15" fill="#64748b">richer</text>
+  <text transform="translate(73 321) rotate(-90)" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="19" font-weight="600" fill="#0f172a">Relative information retained</text>
+
+  <rect x="204" y="193" width="370" height="72" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="224" y="221" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" fill="#0f172a">Coarse representations</text>
+  <text x="224" y="246" font-family="Inter, Arial, sans-serif" font-size="14" fill="#475569">Lower exposure, but clinical meaning can be lost.</text>
+
+  <rect x="716" y="359" width="320" height="90" rx="10" fill="#fff7ed" stroke="#f59e0b"/>
+  <text x="738" y="387" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" fill="#9a3412">Negative result</text>
+  <text x="738" y="412" font-family="Inter, Arial, sans-serif" font-size="14" fill="#7c2d12">Direct identifiers may be absent while</text>
+  <text x="738" y="435" font-family="Inter, Arial, sans-serif" font-size="14" fill="#7c2d12">linkable clinical attributes accumulate.</text>
+
+  <text x="1136" y="592" text-anchor="end" font-family="Inter, Arial, sans-serif" font-size="13" fill="#64748b">Conceptual research model, not a fitted empirical curve</text>
+</svg>

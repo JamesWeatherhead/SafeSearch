@@ -12,16 +12,23 @@ BAAs cover the LLM. They do not cover the tools the LLM calls. The moment a clin
 
 ## Architecture
 
-![Six stages](docs/assets/safesearch-six-stage-architecture.png)
+![Architecture](docs/assets/safesearch-six-stage-architecture.png)
 
-1. **PHI detection** (`services/phi_checker.py`): regex + tagged-PHI dictionary on the input, the reconstructed query, and the final answer.
-2. **Axis extraction** (`services/axis_extraction.py`): Azure `gpt-4o` decomposes the query into 16 clinical axes (diagnosis, symptom, procedure, rxnorm, anatomy, age_bin, sex, ...).
-3. **Vector matching** (`services/vector_search.py`, `embeddings.py`): Azure `text-embedding-3-large` + pgvector KNN against per-axis Postgres tables. Cosine threshold `0.60`, fallback to a generic `wordlist_terms` table.
-4. **Unified rerank and query resynthesis** (`services/reranking.py`, `query_builder.py`): one `gpt-4o` call scores every candidate against the original query and orders the axes; a second `gpt-4o` call rewrites the top matches into a natural-language query. See below.
-5. **External search** (`services/perplexity.py`): Perplexity `sonar-pro`, domain-filtered to PubMed, JAMA, NEJM, Lancet, BMJ, Annals, ACC, AHA, ESC, NICE. Rolling 1-year window.
-6. **Answer synthesis** (`services/response_generator.py`): Azure `gpt-4o` writes the final markdown answer using the original query, the canonical concepts, and Perplexity's citations.
+In one line: **clinical query → break into concepts → embed → find safe equivalents → choose best equivalents → reconstruct safe query → search the web → answer**.
 
-Only stage 4's output crosses the BAA boundary. Everything else stays in Azure.
+Seven stages (from `PipelineService.run()`), then one safety check:
+
+1. **Axis Extraction** (`services/axis_extraction.py`). Breaks the clinical question into 16 clinical categories such as diagnosis, symptoms, medications, age, sex, anatomy, and intent.
+2. **Embedding** (`services/embeddings.py`). Converts each extracted concept into a numerical vector so its meaning can be compared against medical terminology in the database.
+3. **Vector Search** (`services/vector_search.py`). Searches the per-axis PGVector tables for medically similar, standardized terms that can replace the original concepts.
+4. **Reranking** (`services/reranking.py`). Scores the retrieved candidates, selects the best semantic match for each concept, and determines the axis ordering.
+5. **Safe Query Reconstruction** (`services/query_builder.py`). Rebuilds the sanitized concepts into a readable clinical search query without any of the original identifying wording.
+6. **External Medical Search** (`services/perplexity.py`). Sends the reconstructed safe query to Perplexity, domain-filtered to PubMed, JAMA, NEJM, Lancet, BMJ, Annals, ACC, AHA, ESC, and NICE.
+7. **Response Generation** (`services/response_generator.py`). Uses the retrieved concepts and citations to generate the final evidence-based answer to the clinician's original question.
+
+**PHI safety check** (`services/phi_checker.py`). At the end, flags whether PHI appears in the original query, the reconstructed search query, or the generated answer.
+
+Only stage 5's output crosses the BAA boundary. The original query never leaves. The system searches using a reconstructed query made from sanitized medical concepts, not the clinician's raw wording.
 
 ## Stage 4 in detail
 
@@ -86,14 +93,14 @@ app/
 ├── db/                           Tortoise ORM
 └── services/
     ├── pipeline.py               orchestrator
-    ├── phi_checker.py            stage 1
-    ├── axis_extraction.py        stage 2
-    ├── embeddings.py             Azure embeddings + LRU cache
+    ├── axis_extraction.py        stage 1
+    ├── embeddings.py             stage 2 (Azure embeddings + LRU cache)
     ├── vector_search.py          stage 3
-    ├── reranking.py              stage 4 (unified rerank + order)
-    ├── query_builder.py          stage 4 (resynthesis)
-    ├── perplexity.py             stage 5
-    └── response_generator.py     stage 6
+    ├── reranking.py              stage 4
+    ├── query_builder.py          stage 5 (safe query reconstruction)
+    ├── perplexity.py             stage 6
+    ├── response_generator.py     stage 7
+    └── phi_checker.py            end-of-pipeline PHI safety check
 docker/, scripts/, docs/{assets,traces}
 ```
 

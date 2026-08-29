@@ -327,12 +327,55 @@ Tunable pipeline knobs live in `app/core/service_configs.py`:
 
 ---
 
+## Semantic fidelity and the granularity/privacy trade-off
+
+### Semantic fidelity of the reconstructed query on [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi)
+
+![Cosine similarity between original and reconstructed query on ASQ-PHI](docs/assets/cosin_sim_query_reconstructed.png)
+
+Distribution of cosine similarity between the raw clinician query and the reconstructed PHI-safe query on the [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi) benchmark. PHI removal: **100%**. **Mean = 0.61** (red), **median = 0.63** (blue). Severe meaning loss (cosine < 0.4) occurs on **4%** of queries. No reconstructed query exceeds a cosine of **0.83**.
+
+Read on its own, a mean of 0.61 is not great: a nontrivial slice of the clinician's semantic intent is being shed at the boundary. But that loss is the load-bearing part of the design, and the reason is a determinism argument.
+
+### The deterministic PHI-free guarantee
+
+Multiple stages of this pipeline are handled by non-deterministic HIPAA-compliant BAA LLMs: the reranking synonymy rating, the axis-importance ordering, the PHI-safe query refinement, and the final answer synthesis all run at non-zero temperature. Any of those calls could, in principle, emit any string.
+
+The reconstructed query is still **provably PHI-free by construction**, and the reason is not the LLM. It is the vocabulary.
+
+Every token in the reconstructed query is drawn from the per-axis vector store. That vector store is curated to contain **zero PHI**. Regardless of what the LLM samples, the reachable output vocabulary in stage 4 is a PHI-free set. The non-determinism selects an ordering and a rephrasing over a PHI-free vocabulary, so the output is PHI-free with probability one.
+
+This is **vocabulary-level determinism**, not model-level determinism. The LLMs are free to be stochastic. The vector store is what enforces the invariant.
+
+### Why we cannot just scale up granularity
+
+![The SafeSearch granularity/privacy tension](docs/assets/granularity-privacy-tradeoff.svg)
+
+The intuitive fix for a 0.61 mean cosine is to enrich the vector store with a richer ontology: SNOMED, ICD-10-CM, RxNorm at full depth, HPO, LOINC, etc. Clinical specificity climbs and the reconstructed query looks more like the original.
+
+The same move preserves **quasi-identifiers**. A rare diagnosis plus an uncommon procedure plus an atypical age bin is deterministically PHI-free at the field level, but as a joint tuple it identifies a very small equivalence class. Cell counts contract. The k-anonymity threshold that a covered entity is willing to accept ($k \geq 5$, typically) is breached without a single Safe Harbor identifier ever appearing in the string.
+
+Coarser vocabulary trades semantic fidelity for k-anonymity headroom. Richer vocabulary trades k-anonymity headroom for semantic fidelity. There is no free axis.
+
+### K-anonymity decay across multi-turn clinical LLM conversations
+
+We formalized this trade-off in:
+
+> Weatherhead J, Hasan A, Weatherhead J, Golovko G, Grant B, Garcia JD, Certuche HS, Powell RP, Abril JM, McCaffrey P. **K-anonymity decay in multi-turn clinical large language model conversations.** *Frontiers in Digital Health*, 2026. doi:[10.3389/fdgth.2026.1832168](https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1832168/full).
+
+Headline finding of the paper: **79.9% of simulated patients fall below the small-cell threshold ($k < 5$) by the end of their disclosure sequence**, with the **median threshold breach occurring at seven disclosure steps**, even when every individual conversational turn complies with HIPAA Safe Harbor de-identification.
+
+The 0.61 mean cosine in the histogram above is therefore not a bug SafeSearch is trying to close. It is the price of a coarse-enough vocabulary that k-anonymity decay is bounded turn-over-turn, in a system where quasi-identifiers would otherwise accumulate silently.
+
+---
+
 ## Attribution
 
 Founder: **James Charl Weatherhead** (CEO)
 Co-Founder: **Jake Craig Weatherhead** (CTO)
 Principal Investigator: **Peter A. McCaffrey, MD**
 Boundary benchmark: [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi)
+K-anonymity decay: [Frontiers in Digital Health, 2026](https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1832168/full)
 
 ## License
 

@@ -1,0 +1,94 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: FastAPI best practices and patterns for building modern Python web APIs
+globs: app/**/*.py
+---
+
+# FastAPI Best Practices
+
+## Project priorities
+- Proper-Professional Python practices
+- Simplicity
+- Maintainability
+- Readability.
+- Always prefer Pydantic conventions.
+
+## Project Structure
+- Use proper and professional directory structure
+- Implement proper and professional module organization
+- Use proper and professional dependency injection
+- Keep routes organized by domain
+- Implement proper and professional middleware
+- Use proper and professional configuration management
+
+## API Design
+- Use proper HTTP methods
+- Implement proper status codes
+- Use proper request/response models
+- Implement proper and professional validation
+- Use proper error handling
+- Document APIs with OpenAPI
+## Models
+- Use Pydantic models, always prefer Pydantic conventions
+- Implement proper validation
+- Use proper type hints
+- Keep models organized
+- Use proper inheritance
+- Implement proper serialization
+
+## Database
+- Use proper ORM (SQLAlchemy)
+- Implement proper migrations
+- Use proper connection pooling
+- Implement proper transactions
+- Use proper query optimization
+- Handle database errors properly
+
+## Authentication
+- Implement proper JWT authentication
+- Use proper password hashing
+- Implement proper role-based access
+- Use proper session management
+- Implement proper OAuth2
+- Handle authentication errors properly
+
+## Security
+- Implement proper CORS
+- Use proper rate limiting
+- Implement proper input validation
+- Use proper security headers
+- Handle security errors properly
+- Implement proper logging
+
+## Performance
+- Use proper caching
+- Implement proper async operations
+- Use proper background tasks
+- Implement proper connection pooling
+- Use proper query optimization
+- Monitor performance metrics
+
+## Testing
+- Write proper unit tests
+- Implement proper integration tests
+- Use proper test fixtures
+- Implement proper mocking
+- Test error scenarios
+- Use proper test coverage
+
+## Deployment
+- Use proper and professional Docker configuration practices
+- Implement proper and professional CI/CD practices
+- Use proper and professional environment variables practices
+- Implement proper and professional logging
+- Use proper and professional monitoring
+- Handle deployment errors properly and professionally
+
+## Documentation
+- Do not document the code
+- This project views documentation as a maintainability blockade
+- Do not add docstrings

@@ -10,6 +10,14 @@ SafeSearch lets clinicians ask the open web PHI-bearing questions without lettin
 
 BAAs cover the LLM. They do not cover the tools the LLM calls. The moment a clinician's question reaches PubMed or Google Scholar, PHI has crossed the boundary. SafeSearch is the handoff on that line. [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi) measures how well systems hold it.
 
+## Constrained semantic reconstruction
+
+Unlike redaction and surrogate-substitution approaches, which transform identified spans while largely preserving the source text, SafeSearch uses **constrained semantic reconstruction**: the source query is decomposed into clinical concepts, mapped through a PHI-free ontology using embedding-based retrieval, and reconstructed as a new query containing only retrieved clinical representations. The objective is not textual preservation, but preservation of task-relevant clinical semantics across the privacy boundary.
+
+**Definition.** Constrained semantic reconstruction de-identifies a clinical query by decomposing it into structured clinical concepts, mapping those concepts onto a predefined PHI-free vocabulary, and reconstructing a new query from the resulting representation rather than modifying PHI spans within the original text.
+
+The important word is *constrained*. The vector store is not merely helping an LLM paraphrase the query; it defines the vocabulary from which the external representation is constructed. `axis_extraction.py` extracts the clinical axes, `embeddings.py` embeds their terms, `vector_search.py` retrieves replacements from the per-axis vector tables, `reranking.py` selects the best candidates, and `query_builder.py` reconstructs the outbound query.
+
 ## Architecture
 
 ![Architecture](docs/assets/safesearch-six-stage-architecture.png)

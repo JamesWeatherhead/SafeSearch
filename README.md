@@ -20,8 +20,6 @@ The important word is *constrained*. The vector store is not merely helping an L
 
 ## Architecture
 
-![Architecture](docs/assets/safesearch-six-stage-architecture.png)
-
 In one line: **clinical query → break into concepts → embed → find safe equivalents → choose best equivalents → reconstruct safe query → search the web → answer**.
 
 Seven stages (from `PipelineService.run()`), then one safety check:

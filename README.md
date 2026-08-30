@@ -281,7 +281,7 @@ Headline finding: **79.9% of simulated patients fall below the small-cell thresh
 
 Before axis decomposition, v1 vectorized whole queries against a single embedding index. It had no principled way to separate clinical concepts from surrounding identifying context.
 
-[![SafeSearch v1 prototype demo](docs/assets/safesearch-prototype-v1-preview.svg)](https://raw.githubusercontent.com/JamesWeatherhead/SafeSearch/main/docs/assets/safesearch-prototype-v1.mov)
+https://raw.githubusercontent.com/JamesWeatherhead/SafeSearch/main/docs/assets/safesearch-prototype-v1.mov
 
 **[Open the full v1 prototype demo](https://raw.githubusercontent.com/JamesWeatherhead/SafeSearch/main/docs/assets/safesearch-prototype-v1.mov)**
 

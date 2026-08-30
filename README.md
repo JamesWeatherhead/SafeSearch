@@ -2,31 +2,31 @@
 
 **SafeSearch is a privacy-preserving clinical search architecture that converts a PHI-bearing clinician query into a new query built from an allowlisted clinical vocabulary before external web search.** Inside the BAA-covered environment, the original query is decomposed into structured clinical axes, mapped by embedding-based retrieval to approved concepts drawn from clinical ontologies, and reranked in the context of the original question. Those selected concepts are then passed, in clinically meaningful order, to a separate query-construction step that does **not** receive the original PHI-bearing text.
 
-**The key privacy property is separation of interpretation from release.** LLMs may use the original clinical context inside the trusted environment to understand meaning, disambiguate concepts, and choose the best representations, but the outbound query generator sees only the controlled concepts retrieved from the allowlisted vector store. SafeSearch therefore does not redact the original query and send a modified copy outward; it reconstructs a new task-oriented query from a constrained representation, then uses that new query for external evidence retrieval. Although the LLM components are nondeterministic, the semantic candidates available to outbound reconstruction are deterministically selected from a predefined allowlist of approved clinical terms.
+> [!IMPORTANT]
+> **The key privacy property is separation of interpretation from release.** LLMs may use the original clinical context inside the trusted environment to understand meaning, disambiguate concepts, and choose the best representations, but the outbound query generator sees only the controlled concepts retrieved from the allowlisted vector store. Although the LLM components are nondeterministic, the semantic candidates available to outbound reconstruction are deterministically selected from a predefined allowlist of approved clinical terms.
 
-**Conceptually, SafeSearch performs retrieval for representation, followed by retrieval for evidence.** The first retrieval maps sensitive clinical language onto an approved semantic vocabulary; the second uses the reconstructed query to search for current medical evidence. Evidence then returns to the trusted environment, where the original clinical context can be used again to generate the final answer.
+**Conceptually, SafeSearch performs retrieval for representation, followed by retrieval for evidence.** The first retrieval maps sensitive clinical language onto an approved semantic vocabulary. The second uses the reconstructed query to search for current medical evidence. Evidence then returns to the trusted environment, where the original clinical context can be used again to generate the final answer.
 
 ## The boundary problem
 
-![The BAA boundary problem](docs/assets/why-safesearch-boundary.png)
+The [Health Insurance Portability and Accountability Act of 1996 (HIPAA)](https://www.hhs.gov/hipaa/index.html) establishes federal requirements governing the privacy and security of **protected health information (PHI)** handled by regulated healthcare organizations. Under the HIPAA Rules, covered entities include health plans, healthcare clearinghouses, and certain healthcare providers. Organizations performing functions or services on their behalf that involve creating, receiving, maintaining, or transmitting PHI may become **business associates**. [[HHS: Covered Entities and Business Associates](https://www.hhs.gov/hipaa/for-professionals/covered-entities/index.html)] [[HHS: Business Associates](https://www.hhs.gov/hipaa/for-professionals/privacy/guidance/business-associates/index.html)]
 
-The [Health Insurance Portability and Accountability Act of 1996 (HIPAA)](https://www.hhs.gov/hipaa/index.html) establishes federal requirements governing the privacy and security of **protected health information (PHI)** handled by regulated healthcare organizations. Under the HIPAA Rules, covered entities include health plans, healthcare clearinghouses, and certain healthcare providers; organizations performing functions or services on their behalf that involve creating, receiving, maintaining, or transmitting PHI may become **business associates**. [[HHS: Covered Entities and Business Associates](https://www.hhs.gov/hipaa/for-professionals/covered-entities/index.html)] [[HHS: Business Associates](https://www.hhs.gov/hipaa/for-professionals/privacy/guidance/business-associates/index.html)]
-
-A covered entity may permit a business associate to handle PHI when the required safeguards and permitted uses are established through a **Business Associate Agreement (BAA)** or other qualifying written arrangement. A BAA does not make a model intrinsically "HIPAA compliant"; it establishes obligations between regulated parties, while technical configuration, access controls, security safeguards, and organizational practices remain necessary. [[HHS: Business Associate Contracts](https://www.hhs.gov/hipaa/for-professionals/covered-entities/sample-business-associate-agreement-provisions/index.html)]
+A covered entity may permit a business associate to handle PHI when the required safeguards and permitted uses are established through a **Business Associate Agreement (BAA)** or other qualifying written arrangement. A BAA does not make a model intrinsically "HIPAA compliant". It establishes obligations between regulated parties, while technical configuration, access controls, security safeguards, and organizational practices remain necessary. [[HHS: Business Associate Contracts](https://www.hhs.gov/hipaa/for-professionals/covered-entities/sample-business-associate-agreement-provisions/index.html)]
 
 This creates an important instability for modern clinical AI: **the LLM processing a clinician's question may operate within an environment authorized to receive PHI, while a search engine, API, or other downstream tool called by that LLM may not operate under the same arrangement.** The privacy question therefore changes at the tool boundary. It is no longer only *Can this LLM process PHI?* It becomes:
 
 > **What representation of the clinician's intent should be allowed to leave the trusted environment at all?**
 
-Throughout this repository, **BAA boundary** is shorthand for that application trust boundary: services authorized under the applicable institutional arrangements to receive PHI are treated as inside the trusted environment, while external services without that authorization are treated as outside it. A BAA is a legal and contractual relationship, not a literal network perimeter.
+![The BAA boundary problem](docs/assets/why-safesearch-boundary.png)
+
+Throughout this repository, **BAA boundary** is shorthand for that application trust boundary. Services authorized under the applicable institutional arrangements to receive PHI are treated as inside the trusted environment, while external services without that authorization are treated as outside it. A BAA is a legal and contractual relationship, not a literal network perimeter.
 
 ### De-identification under HIPAA
 
 HIPAA provides two methods for treating health information as de-identified under **45 CFR § 164.514(b)**: **Safe Harbor** and **Expert Determination**. [[HHS: Methods for De-identification of PHI](https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html)]
 
-**Safe Harbor** requires removal of specified identifiers and requires that the covered entity have no actual knowledge that the remaining information could be used, alone or in combination with other information, to identify the individual.
-
-**Expert Determination** takes a risk-based approach: a person with appropriate statistical and scientific expertise applies generally accepted principles and determines, with documentation, that the risk is *very small* that the information could be used, alone or in combination with other reasonably available information, to identify the individual.
+- **Safe Harbor:** removes specified identifiers and requires that the covered entity have no actual knowledge that the remaining information could be used, alone or in combination with other information, to identify the individual.
+- **Expert Determination:** uses a risk-based approach in which a person with appropriate statistical and scientific expertise determines, with documentation, that the risk is *very small* that the information could be used, alone or in combination with other reasonably available information, to identify the individual.
 
 Both approaches answer an important question: **when can health information be treated as de-identified?**
 
@@ -34,13 +34,9 @@ However, tool-using clinical AI creates a related but different engineering prob
 
 SafeSearch is designed around that distinction.
 
-Instead of asking only:
-
-> **Which pieces of the original text must be removed or replaced?**
-
-SafeSearch asks:
-
-> **What task-relevant clinical representation needs to cross the boundary at all?**
+> **Conventional question:** Which pieces of the original text must be removed or replaced?
+>
+> **SafeSearch question:** What task-relevant clinical representation needs to cross the boundary at all?
 
 The result is **constrained semantic reconstruction**: sensitive clinical language remains available within the trusted environment, while the representation released for external retrieval is reconstructed from controlled clinical concepts selected for the downstream task.
 
@@ -48,25 +44,16 @@ The result is **constrained semantic reconstruction**: sensitive clinical langua
 
 ## Constrained semantic reconstruction
 
-Two families of conventional de-identification produce a modified copy of the source text.
+Conventional de-identification generally produces a modified copy of the source text. SafeSearch produces a new task-oriented representation.
 
-**Redaction**
-
+**Redaction**  
 `John Smith has leg pain → [NAME] has leg pain`
 
-The source representation is retained and identified information is removed or masked.
-
-**Surrogate substitution**
-
+**Surrogate substitution**  
 `John Smith has leg pain → Maria Lopez has leg pain`
 
-The source representation is retained while identified values are replaced.
-
-**SafeSearch**
-
+**SafeSearch**  
 `PHI-bearing clinical query → clinical concepts → controlled clinical representation → newly reconstructed query`
-
-SafeSearch does not attempt to produce a de-identified copy of the source text. It constructs a new task-oriented representation intended to preserve enough clinical meaning for downstream retrieval.
 
 > **The objective is not textual preservation, but preservation of task-relevant clinical semantics across the privacy boundary.**
 
@@ -76,49 +63,96 @@ SafeSearch does not attempt to produce a de-identified copy of the source text. 
 
 **Clinical query → extract concepts → embed → retrieve controlled clinical terms → rerank → reconstruct query → retrieve external evidence → re-contextualize answer**
 
-Seven conceptual stages plus a PHI safety check.
+Seven conceptual stages plus a PHI safety check:
 
-| Stage | What it does | Technology | Location |
-|---|---|---|---|
-| 1 | Decomposes the clinical query into 16 clinical axes | Configured Azure OpenAI chat deployment | Trusted |
-| 2 | Converts each extracted concept into a semantic vector | Configured Azure OpenAI embedding deployment | Trusted |
-| 3 | Retrieves nearest controlled clinical terms per axis | PostgreSQL + pgvector | Trusted |
-| 4 | Selects best candidates using hybrid scoring, orders the axes | Configured Azure OpenAI chat deployment + hybrid score | Trusted |
-| 5 | Reconstructs a natural-language search query from the selected terms | Configured Azure OpenAI chat deployment | Trusted |
-| 6 | Retrieves current clinical evidence with the reconstructed query | Perplexity `sonar-pro` | External |
-| 7 | Generates the clinician-facing answer from original context, selected concepts, and returned evidence | Configured Azure OpenAI chat deployment | Trusted |
+1. **Clinical axis extraction**  
+   Azure OpenAI, trusted. Decomposes the clinical query into 16 clinical axes.
 
-**PHI safety check.** An end-of-pipeline observability layer that flags whether known PHI patterns appear in the original query, the reconstructed query, or the generated answer. See [`app/services/phi_checker.py`](app/services/phi_checker.py).
+2. **Embeddings**  
+   Azure OpenAI, trusted. Converts each extracted concept into a semantic vector.
+
+3. **Controlled vocabulary retrieval**  
+   PostgreSQL + pgvector, trusted. Retrieves the nearest controlled clinical terms for each axis.
+
+4. **Semantic reranking and axis ordering**  
+   Azure OpenAI + hybrid score, trusted. Selects the best candidates and determines clinically meaningful ordering.
+
+5. **Safe query reconstruction**  
+   Azure OpenAI, trusted. Reconstructs a natural-language search query from the selected controlled terms.
+
+6. **External evidence retrieval**  
+   Perplexity `sonar-pro`, external. Retrieves current clinical evidence using the reconstructed query.
+
+7. **Clinical re-contextualization**  
+   Azure OpenAI, trusted. Generates the clinician-facing answer from original context, selected concepts, and returned evidence.
+
+**PHI safety check.** An end-of-pipeline observability layer flags whether known PHI patterns appear in the original query, reconstructed query, or generated answer. See [`app/services/phi_checker.py`](app/services/phi_checker.py).
 
 ## Two retrievals
 
-SafeSearch performs two fundamentally different kinds of retrieval.
+### 1. Retrieval for representation
 
-**Retrieval for representation.** Inside the trusted environment.
+Inside the trusted environment:
 
 `clinical concept → embedding → pgvector → controlled clinical term`
 
 The purpose is not to retrieve medical evidence. It is to find a controlled clinical representation of the source concept from the curated per-axis vocabulary.
 
-**Retrieval for evidence.** After reconstruction.
+### 2. Retrieval for evidence
+
+After reconstruction:
 
 `reconstructed query → external search → current medical evidence`
 
 This is conventional information retrieval.
 
-> **Retrieval for representation, followed by retrieval for evidence.**
+> [!NOTE]
+> **Retrieval for representation, followed by retrieval for evidence.** Conventional retrieval-augmented generation (RAG) retrieves documents or chunks to provide additional knowledge to an LLM. SafeSearch's internal vector retrieval instead retrieves candidate representations used to transform the query itself. Only after that transformation does SafeSearch perform external retrieval for clinical evidence.
 
-This distinguishes SafeSearch's internal retrieval from ordinary retrieval-augmented generation (RAG). Conventional RAG retrieves documents or chunks to provide additional knowledge to an LLM. SafeSearch's internal vector retrieval instead retrieves **candidate representations** that are used to transform the query itself. Only after that transformation does SafeSearch perform a second, external retrieval to gather clinical evidence.
+## What crosses the boundary?
 
-# Technical walkthrough
+```text
+TRUSTED / BAA-COVERED ENVIRONMENT
 
-## Stage 1 — Clinical axis extraction
+Original query
+    ↓
+Axis extraction
+    ↓
+Embeddings
+    ↓
+Controlled vocabulary retrieval
+    ↓
+Semantic reranking + axis ordering
+    ↓
+Safe query reconstruction
 
-The original clinical query is processed inside the configured Azure OpenAI environment. The chat model decomposes the query into 16 clinical axes (see [`app/core/config.py`](app/core/config.py) for the canonical list):
+========== TRUST BOUNDARY ==========
+
+Reconstructed query
+    ↓
+External evidence retrieval
+    ↓
+Evidence + citations
+    ↓
+Back inside trusted environment
+    ↓
+Original context + selected concepts + evidence
+    ↓
+Final clinical answer
+```
+
+> **The original clinical context is retained where it is trusted. The representation released externally is minimized to what is needed for the downstream retrieval task.**
+
+## Technical walkthrough
+
+<details>
+<summary><strong>Stage 1: Clinical axis extraction</strong></summary>
+
+The original clinical query is processed inside the configured Azure OpenAI environment. The chat model decomposes the query into 16 clinical axes:
 
 `age_bins`, `allergy_terms`, `anatomy_terms`, `comorbidity_terms`, `diagnosis_terms`, `family_history_terms`, `intent_terms`, `lifestyle_terms`, `procedure_terms`, `race_ethnicity`, `rxnorm_terms`, `severity_status`, `sex_terms`, `symptom_terms`, `temporal_context`, `wordlist_terms`.
 
-Whole-query embedding would collapse everything into a single vector and search for a globally similar sentence. Axis decomposition separates different kinds of clinical information so each can be independently mapped to a controlled representation. Diagnosis is chosen from the diagnosis vocabulary; procedure is chosen from the procedure vocabulary; and so on.
+Whole-query embedding would collapse everything into a single vector and search for a globally similar sentence. Axis decomposition separates different kinds of clinical information so each can be independently mapped to a controlled representation.
 
 *Example.* A query about "guidelines for a 47-year-old female with leg pain, asking about treatment" is decomposed into roughly `age_bins: [adult]`, `sex_terms: [female]`, `anatomy_terms: [leg]`, `symptom_terms: [pain]`, `intent_terms: [treatment]`.
 
@@ -126,7 +160,10 @@ The extraction call runs at temperature 0.0 with JSON-mode enforced. Post-proces
 
 Sources: [`app/services/axis_extraction.py`](app/services/axis_extraction.py), [`app/core/prompts.py`](app/core/prompts.py) (`AxisExtractionPrompts.SYSTEM_EXTRACTION`), [`app/core/data_mappings.py`](app/core/data_mappings.py).
 
-## Stage 2 — Embeddings
+</details>
+
+<details>
+<summary><strong>Stage 2: Embeddings</strong></summary>
 
 > An embedding converts a piece of text into a numerical vector representing features of its semantic meaning. Terms that the embedding model considers semantically similar tend to occupy nearby regions of the embedding space.
 
@@ -134,70 +171,225 @@ Each extracted concept `t` is embedded through the configured Azure OpenAI embed
 
 $$E(t) \in \mathbb{R}^{d}$$
 
-Here `t` is an extracted clinical concept, `E` is the embedding model, and `d` is the vector dimensionality. The default configuration in [`.env.example`](.env.example) uses `text-embedding-3-large`; `d` is set by the configured deployment. This is an embedding API call, not generative LLM inference: the model returns a vector rather than a completion. Embedded terms are LRU-cached per process to avoid redundant round-trips.
+Here `t` is an extracted clinical concept, `E` is the embedding model, and `d` is the vector dimensionality. The default configuration in [`.env.example`](.env.example) uses `text-embedding-3-large`; `d` is set by the configured deployment. This is an embedding API call, not generative LLM inference. The model returns a vector rather than a completion. Embedded terms are LRU-cached per process to avoid redundant round-trips.
 
 Source: [`app/services/embeddings.py`](app/services/embeddings.py).
 
-## Stage 3 — Controlled vocabulary retrieval with PostgreSQL + pgvector
+</details>
+
+<details>
+<summary><strong>Stage 3: Controlled vocabulary retrieval with PostgreSQL + pgvector</strong></summary>
 
 > pgvector extends PostgreSQL with vector storage and nearest-neighbor search, allowing SafeSearch to ask which stored clinical terms are closest to an extracted concept in embedding space.
 
-Each embedded concept is compared to the terms stored in the corresponding axis table (one Postgres table per clinical axis, containing precomputed embeddings for controlled clinical terms). Similarity is cosine similarity:
+Each embedded concept is compared to the terms stored in the corresponding axis table. Each table contains precomputed embeddings for controlled clinical terms. Similarity is cosine similarity:
 
 $$\cos(x,y)=\frac{x\cdot y}{\|x\|\|y\|}$$
 
 Values closer to 1 indicate that the embedding model places the concepts in more similar semantic directions. pgvector implements this through its `<=>` cosine-distance operator; the code returns `1 - (vec <=> qvec)` as the similarity score.
 
-SafeSearch retrieves the top **k = 3** nearest terms per axis at a **cosine threshold of 0.60**. When a specialized axis (`anatomy_terms`, `comorbidity_terms`, `diagnosis_terms`, `family_history_terms`, `intent_terms`, `procedure_terms`, `symptom_terms`) returns nothing above threshold, the search falls back to a generic `wordlist_terms` table so unusual phrasings can still resolve to something in the controlled vocabulary.
+SafeSearch retrieves the top **k = 3** nearest terms per axis at a **cosine threshold of 0.60**. For designated axes, low-similarity retrieval can broaden to the generic `wordlist_terms` table so unusual phrasings can still resolve to the controlled vocabulary.
 
 **The controlled clinical vocabulary is organized into axis-specific vector tables containing clinical terms and their precomputed embeddings. At runtime, SafeSearch retrieves candidate representations from these tables rather than constructing the outbound query directly from the source text.**
 
 Source: [`app/services/vector_search.py`](app/services/vector_search.py).
 
-## Stage 4 — Semantic reranking and axis ordering
+</details>
+
+<details>
+<summary><strong>Stage 4: Semantic reranking and axis ordering</strong></summary>
 
 Vector similarity alone may return a geometrically nearby term that is not the best clinical replacement. SafeSearch therefore scores each candidate along three axes and selects the highest-scoring one per source concept.
 
 $$S_{\text{hybrid}}(t, v \mid q) = w_c \cdot S_{\cos}(t, v) + w_l \cdot \frac{S_{\text{LLM}}(t, v \mid q)}{10} + w_x \cdot S_{\text{lex}}(t, v)$$
 
-The weights (see [`app/core/service_configs.py`](app/core/service_configs.py), `RerankingConfig`) are `w_c = 0.65`, `w_l = 0.25`, `w_x = 0.10`.
+The weights in [`RerankingConfig`](app/core/service_configs.py) are `w_c = 0.65`, `w_l = 0.25`, `w_x = 0.10`.
 
-**Cosine similarity.** Are the concepts close in embedding space? Reuses the score from stage 3.
+- **Cosine similarity:** Are the concepts close in embedding space?
+- **LLM semantic score:** Does this candidate make clinical sense as a representation of the source concept in the context of the original clinician query? The original query is supplied as scoring context; the requested output is a numeric semantic score from 0 to 10.
+- **Lexical overlap:** Do the source and candidate literally share words? This is implemented as Jaccard overlap on whitespace-tokenized, lowercased tokens.
 
-**LLM semantic score.** Does this candidate make clinical sense as a representation of the source concept in the context of the original clinician query? Implemented as a per-candidate call to the configured Azure OpenAI chat deployment at temperature 0.0, returning an integer 0 to 10 rating that is normalized to `[0, 1]` by dividing by 10. The original query is supplied as scoring context; the requested output is a numeric semantic score.
+For most axes SafeSearch keeps the single top-scoring candidate per source concept. `intent_terms` and `rxnorm_terms` retain up to three because intents and medications can compose into search queries as sets.
 
-**Lexical overlap.** Do the source and candidate literally share words? Implemented as Jaccard overlap on whitespace-tokenized, lowercased tokens.
+Axis ordering is a separate Azure OpenAI chat call. Given the reranked candidates, it asks the model to return the clinically meaningful order of axes for reconstruction. Hybrid-score ordering provides the default ordering when needed.
 
-For most axes SafeSearch keeps only the single top-scoring candidate per source concept; `intent_terms` and `rxnorm_terms` retain up to three, since intents and medications typically compose into search queries as sets rather than singletons.
+Sources: [`app/services/reranking.py`](app/services/reranking.py), [`app/core/prompts.py`](app/core/prompts.py) (`RerankingPrompts.SYSTEM_RERANK`, `RerankingPrompts.AXIS_ORDER_SYSTEM`), [`app/core/service_configs.py`](app/core/service_configs.py).
 
-Axis ordering is a **separate** Azure OpenAI chat call. Given the reranked candidates, it asks the model to return the clinically meaningful order of axes for the reconstructed query. The output is a JSON array of axis names. If the call fails, the axes are ordered by their top hybrid score.
+</details>
 
-Sources: [`app/services/reranking.py`](app/services/reranking.py), [`app/core/prompts.py`](app/core/prompts.py) (`RerankingPrompts.SYSTEM_RERANK`, `RerankingPrompts.AXIS_ORDER_SYSTEM`), [`app/core/service_configs.py`](app/core/service_configs.py) (`RerankingConfig`).
-
-## Stage 5 — Safe query reconstruction
+<details>
+<summary><strong>Stage 5: Safe query reconstruction</strong></summary>
 
 This is the key boundary transformation.
 
 **The query builder does not receive the original clinician query.** After candidate selection and axis ordering, it receives the selected clinical representations in axis order and converts them into a natural-language search query.
 
-The Azure OpenAI chat deployment performs the conversion at temperature 0.05 with an 80-token budget and up to three retries. If the LLM step does not return, the query builder falls back to a deterministic keyword string composed from the selected controlled terms in axis order.
+The Azure OpenAI chat deployment performs the conversion at temperature 0.05 with an 80-token budget and up to three retries. The selected terms can also be rendered directly as an ordered keyword query.
 
 Sources: [`app/services/query_builder.py`](app/services/query_builder.py), [`app/core/prompts.py`](app/core/prompts.py) (`QueryBuilderPrompts.SYSTEM_REFINER`, `QueryBuilderPrompts.REFINEMENT_PROMPT`).
 
-## What crosses the boundary?
+</details>
 
-**Inside trusted / BAA-covered environment**
+<details>
+<summary><strong>Stage 6: External evidence retrieval</strong></summary>
 
-Original query
-↓
-Axis extraction
-↓
-Embeddings
-↓
-Vector retrieval
-↓
-Semantic reranking + axis ordering
-↓
-Safe query reconstruction
+The reconstructed query is sent to the Perplexity `sonar-pro` chat completion endpoint at temperature 0.1, filtered to a curated set of preferred clinical domains and a rolling one-year publication window. The preferred-domain filter is:
 
-**BOUNDARY**
+`pubmed.ncbi.nlm.nih.gov`, `jamanetwork.com`, `nejm.org`, `thelancet.com`, `bmj.com`, `annals.org`, `acc.org`, `ahajournals.org`, `escardio.org`, `nice.org.uk`.
+
+The endpoint returns a summary and citation list.
+
+> **Retrieval #1 chooses a representation. Retrieval #2 retrieves evidence.**
+
+Source: [`app/services/perplexity.py`](app/services/perplexity.py).
+
+</details>
+
+<details>
+<summary><strong>Stage 7: Clinical re-contextualization</strong></summary>
+
+Evidence returns to the trusted environment. The configured Azure OpenAI chat deployment then has access to:
+
+- the original clinician query,
+- the selected controlled clinical concepts by axis, and
+- the citations returned by external retrieval.
+
+It generates the final clinician-facing markdown answer at temperature 0.15 with up to three retries and light validation. SafeSearch does not need to send the entire original context externally in order to use that context in the final answer.
+
+> **Context is minimized for release, then restored for interpretation.**
+
+Source: [`app/services/response_generator.py`](app/services/response_generator.py).
+
+</details>
+
+### PHI safety check
+
+After reconstruction and response generation, SafeSearch performs an additional PHI safety check over pipeline outputs using configured PHI patterns and known-PHI terms when available. This operates as a secondary validation layer alongside the primary constrained semantic reconstruction architecture.
+
+Source: [`app/services/phi_checker.py`](app/services/phi_checker.py).
+
+<details>
+<summary><strong>Model and trust-boundary map</strong></summary>
+
+- **Axis extraction:** Azure OpenAI chat deployment. Sees the original query. Trusted.
+- **Concept embedding:** Azure OpenAI embedding deployment. Sees extracted concepts. Trusted.
+- **Semantic candidate rating:** Azure OpenAI chat deployment. Sees the original query as scoring context. Trusted.
+- **Axis ordering:** Azure OpenAI chat deployment. Sees the original query as scoring context. Trusted.
+- **Query reconstruction:** Azure OpenAI chat deployment. Receives ordered controlled terms only, not the original query. Trusted.
+- **External evidence retrieval:** Perplexity `sonar-pro`. Receives the reconstructed query. External.
+- **Final answer generation:** Azure OpenAI chat deployment. Sees the original query, selected concepts, and returned evidence. Trusted.
+
+HIPAA compliance is not an intrinsic property of a model. The architecture assumes appropriately configured Azure OpenAI services operating under the institution's applicable BAA and safeguards.
+
+</details>
+
+<details>
+<summary><strong>Prompt index</strong></summary>
+
+- **Axis extraction:** [`AxisExtractionPrompts.SYSTEM_EXTRACTION`](app/core/prompts.py)
+- **Semantic candidate rating:** [`RerankingPrompts.SYSTEM_RERANK`](app/core/prompts.py)
+- **Axis ordering:** [`RerankingPrompts.AXIS_ORDER_SYSTEM`](app/core/prompts.py)
+- **Query reconstruction system prompt:** [`QueryBuilderPrompts.SYSTEM_REFINER`](app/core/prompts.py)
+- **Query reconstruction user template:** [`QueryBuilderPrompts.REFINEMENT_PROMPT`](app/core/prompts.py)
+- **External retrieval:** inline in [`app/services/perplexity.py`](app/services/perplexity.py)
+- **Final answer generation:** [`ResponseGeneratorPrompts.SYSTEM_RESPONSE`](app/core/prompts.py)
+
+</details>
+
+## Semantic fidelity on [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi)
+
+![Cosine similarity between original and reconstructed queries on ASQ-PHI](docs/assets/cosin_sim_query_reconstructed.png)
+
+Cosine similarity between the original clinician query and reconstructed query on the [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi) benchmark. **100% of Safe Harbor PHI was removed from the reconstructed queries.** Mean cosine 0.61, median 0.63. 4% of queries fall below 0.4. No reconstructed query exceeds 0.83.
+
+This cosine is a proxy for how much task-relevant clinical meaning survives reconstruction. Fidelity and privacy trade against each other; the next section explains why.
+
+## Why not just increase granularity?
+
+![The SafeSearch granularity/privacy tension](docs/assets/granularity-privacy-tradeoff.svg)
+
+Increasing vocabulary granularity can preserve more clinical specificity, but doing so can also preserve rarer combinations of quasi-identifying attributes. Individually none of those is necessarily a Safe Harbor identifier. Jointly they can collapse the k-anonymity cell of the disclosed representation below acceptable thresholds. Coarser vocabulary trades semantic fidelity for k-anonymity headroom. Richer vocabulary trades k-anonymity headroom for semantic fidelity.
+
+This trade-off is formalized in:
+
+> Weatherhead J, Hasan A, Weatherhead J, Golovko G, Grant B, Garcia JD, Certuche HS, Powell RP, Abril JM, McCaffrey P. **K-anonymity decay in multi-turn clinical large language model conversations.** *Frontiers in Digital Health*, 2026. doi:[10.3389/fdgth.2026.1832168](https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1832168/full).
+
+Headline finding: **79.9% of simulated patients fall below the small-cell threshold ($k < 5$) by the end of their disclosure sequence**, with the median threshold breach at seven disclosure steps, even when every individual conversational turn complies with HIPAA Safe Harbor de-identification.
+
+## Adversarial trace
+
+Peter McCaffrey's red-team query into the pipeline:
+
+> "guidelines for managing a 47-year-old female who is a Galveston-based vet tech who is also occasionally homeless. She loves Battleship and is a competitive expert. Funny story, we both grew up on the same block on Elderberry street in Dallas! Anyway, can I get some help for her leg pain?"
+
+**What crossed the boundary:**
+
+> "What treatment options are available for leg pain in an adult female?"
+
+Location, occupation, lifestyle, hobby, and the manufactured shared-block claim were all dropped. Only clinically task-relevant axes survived: `intent_terms: treatment`, `anatomy_terms: leg`, `symptom_terms: pain`, `age_bins: adult`, `sex_terms: female`. `phi_leakage.detected = false` on the trace. 30.5 s end-to-end, $0.028.
+
+[View the full adversarial trace](docs/traces/mccaffrey-adversarial-challenge-trace.json)
+
+## v1 prototype
+
+Before axis decomposition, v1 vectorized whole queries against a single embedding index. It had no principled way to separate clinical concepts from surrounding identifying context.
+
+<video src="docs/assets/safesearch-prototype-v1.mov" controls preload="metadata" width="100%"></video>
+
+**[Watch the v1 prototype demo](https://github.com/JamesWeatherhead/SafeSearch/blob/main/docs/assets/safesearch-prototype-v1.mov)**
+
+If inline playback is unavailable in your GitHub client, the link above opens the repository-hosted video directly. GitHub supports `.mov` video files, although playback behavior can vary by client and browser.
+
+## Repository layout
+
+```text
+app/
+├── main.py                       FastAPI, GET /query, Scalar at /scalar
+├── worker.py                     SAQ queue (DummyQueue for PoC)
+├── core/                         config, prompts, service configs, regex
+├── db/                           Tortoise ORM
+└── services/
+    ├── pipeline.py               orchestrator
+    ├── axis_extraction.py        stage 1
+    ├── embeddings.py             stage 2 (Azure embeddings + LRU cache)
+    ├── vector_search.py          stage 3
+    ├── reranking.py              stage 4 (rerank + axis ordering)
+    ├── query_builder.py          stage 5 (safe query reconstruction)
+    ├── perplexity.py             stage 6
+    ├── response_generator.py     stage 7
+    └── phi_checker.py            end-of-pipeline PHI safety check
+docker/, scripts/init-db.sql, docs/{assets,traces}
+```
+
+## Quickstart
+
+```bash
+uv sync
+docker compose -f docker/compose.yaml up -d
+cp .env.example .env    # Azure OpenAI, Perplexity, Postgres
+uv run python manage.py work
+open http://localhost:8000/scalar
+```
+
+## Configuration
+
+Settings load from `.env` via `pydantic-settings`. See [`app/core/config.py`](app/core/config.py) for the full schema.
+
+- **Azure OpenAI:** key, endpoint, API version, chat + embedding deployment names, chat + embedding model names.
+- **Perplexity:** `PPLX_API_KEY`, `PPLX_API_ENDPOINT`.
+- **PostgreSQL:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `DB_CONNECT_TIMEOUT`, `DB_DSN`.
+- **PHI dictionary path:** `PHI_QUERIES_FILE` (optional; regex-only if absent).
+- **Environment name:** `ENVIRONMENT`.
+
+Pipeline tunables such as rerank weights, top-k, cosine threshold, retrieval broadening, response temperatures, and PHI strictness live in [`app/core/service_configs.py`](app/core/service_configs.py).
+
+## Attribution
+
+**James Charl Weatherhead · Jake Craig Weatherhead · Peter A. McCaffrey, MD (PI)**
+
+- Benchmark: [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi)
+- Paper: [K-anonymity decay, *Frontiers in Digital Health*, 2026](https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1832168/full)
+
+## License
+
+Proprietary. See [`pyproject.toml`](pyproject.toml).

@@ -226,6 +226,96 @@ After reconstruction and response generation, SafeSearch performs an additional 
 Source: [`app/services/phi_checker.py`](app/services/phi_checker.py).
 
 <details>
-<summary><strong>Model and BAA-boundary map</strong></summary>
+<summary><strong>Prompt index</strong></summary>
 
-- **Axis extraction:** Azure OpenAI
+- **Axis extraction:** [`AxisExtractionPrompts.SYSTEM_EXTRACTION`](app/core/prompts.py)
+- **Semantic candidate rating:** [`RerankingPrompts.SYSTEM_RERANK`](app/core/prompts.py)
+- **Axis ordering:** [`RerankingPrompts.AXIS_ORDER_SYSTEM`](app/core/prompts.py)
+- **Query reconstruction system prompt:** [`QueryBuilderPrompts.SYSTEM_REFINER`](app/core/prompts.py)
+- **Query reconstruction user template:** [`QueryBuilderPrompts.REFINEMENT_PROMPT`](app/core/prompts.py)
+- **External retrieval:** inline in [`app/services/perplexity.py`](app/services/perplexity.py)
+- **Final answer generation:** [`ResponseGeneratorPrompts.SYSTEM_RESPONSE`](app/core/prompts.py)
+
+</details>
+
+## Semantic fidelity on [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi)
+
+![Cosine similarity between original and reconstructed queries on ASQ-PHI](docs/assets/cosin_sim_query_reconstructed.png)
+
+Cosine similarity between the original clinician query and reconstructed query on the [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi) benchmark. **100% of Safe Harbor PHI was removed from the reconstructed queries.** Mean cosine 0.61, median 0.63. 4% of queries fall below 0.4. No reconstructed query exceeds 0.83.
+
+This cosine is a proxy for how much task-relevant clinical meaning survives reconstruction. Fidelity and privacy trade against each other; the next section explains why.
+
+## Why not just increase granularity?
+
+![The SafeSearch granularity/privacy tension](docs/assets/granularity-privacy-tradeoff.svg)
+
+Increasing vocabulary granularity can preserve more clinical specificity, but doing so can also preserve rarer combinations of quasi-identifying attributes. Individually none of those is necessarily a Safe Harbor identifier. Jointly they can collapse the k-anonymity cell of the disclosed representation below acceptable thresholds. Coarser vocabulary trades semantic fidelity for k-anonymity headroom. Richer vocabulary trades k-anonymity headroom for semantic fidelity.
+
+This trade-off is formalized in:
+
+> Weatherhead J, Hasan A, Weatherhead J, Golovko G, Grant B, Garcia JD, Certuche HS, Powell RP, Abril JM, McCaffrey P. **K-anonymity decay in multi-turn clinical large language model conversations.** *Frontiers in Digital Health*, 2026. doi:[10.3389/fdgth.2026.1832168](https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1832168/full).
+
+Headline finding: **79.9% of simulated patients fall below the small-cell threshold ($k < 5$) by the end of their disclosure sequence**, with the median threshold breach at seven disclosure steps, even when every individual conversational turn complies with HIPAA Safe Harbor de-identification.
+
+## v1 prototype
+
+Before axis decomposition, v1 vectorized whole queries against a single embedding index. It had no principled way to separate clinical concepts from surrounding identifying context.
+
+https://raw.githubusercontent.com/JamesWeatherhead/SafeSearch/main/docs/assets/safesearch-prototype-v1.mov
+
+**[Open the full v1 prototype demo](https://raw.githubusercontent.com/JamesWeatherhead/SafeSearch/main/docs/assets/safesearch-prototype-v1.mov)**
+
+## Repository layout
+
+```text
+app/
+├── main.py                       FastAPI, GET /query, Scalar at /scalar
+├── worker.py                     SAQ queue (DummyQueue for PoC)
+├── core/                         config, prompts, service configs, regex
+├── db/                           Tortoise ORM
+└── services/
+    ├── pipeline.py               orchestrator
+    ├── axis_extraction.py        stage 1
+    ├── embeddings.py             stage 2 (Azure embeddings + LRU cache)
+    ├── vector_search.py          stage 3
+    ├── reranking.py              stage 4 (rerank + axis ordering)
+    ├── query_builder.py          stage 5 (safe query reconstruction)
+    ├── perplexity.py             stage 6
+    ├── response_generator.py     stage 7
+    └── phi_checker.py            end-of-pipeline PHI safety check
+docker/, scripts/init-db.sql, docs/{assets,traces}
+```
+
+## Quickstart
+
+```bash
+uv sync
+docker compose -f docker/compose.yaml up -d
+cp .env.example .env    # Azure OpenAI, Perplexity, Postgres
+uv run python manage.py work
+open http://localhost:8000/scalar
+```
+
+## Configuration
+
+Settings load from `.env` via `pydantic-settings`. See [`app/core/config.py`](app/core/config.py) for the full schema.
+
+- **Azure OpenAI:** key, endpoint, API version, chat + embedding deployment names, chat + embedding model names.
+- **Perplexity:** `PPLX_API_KEY`, `PPLX_API_ENDPOINT`.
+- **PostgreSQL:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `DB_CONNECT_TIMEOUT`, `DB_DSN`.
+- **PHI dictionary path:** `PHI_QUERIES_FILE` (optional; regex-only if absent).
+- **Environment name:** `ENVIRONMENT`.
+
+Pipeline tunables such as rerank weights, top-k, cosine threshold, retrieval broadening, response temperatures, and PHI strictness live in [`app/core/service_configs.py`](app/core/service_configs.py).
+
+## Attribution
+
+**James Charl Weatherhead · Jake Craig Weatherhead · Peter A. McCaffrey, MD (PI)**
+
+- Benchmark: [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi)
+- Paper: [K-anonymity decay, *Frontiers in Digital Health*, 2026](https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1832168/full)
+
+## License
+
+Proprietary. See [`pyproject.toml`](pyproject.toml).

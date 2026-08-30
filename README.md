@@ -1,26 +1,18 @@
 # SafeSearch
 
-**SafeSearch is a privacy-preserving clinical search architecture for connecting BAA-covered clinical LLM environments to external tools such as web search, APIs, and MCP servers.** A PHI-bearing clinician query is interpreted inside the trusted environment, decomposed into clinical axes, and mapped by embedding retrieval to an allowlisted vocabulary derived from clinical ontologies such as UMLS, SNOMED CT, and RxNorm. The selected concepts are reranked, placed in clinically meaningful order, and passed to a separate query builder that never receives the original PHI-bearing text.
-
-**The external search query is derived from the original query's clinical meaning, but it is not generated from the original text.** SafeSearch first decomposes the original PHI-bearing query into clinical axes inside the BAA-covered environment. Those concepts are mapped to an allowlisted clinical vocabulary, reranked using the original query as clinical context, and ordered to preserve the structure of the question. A separate query builder then reconstructs the external search query using only those selected, ordered terms. **The query builder never receives the original PHI-bearing text.**
+**SafeSearch is a privacy-preserving clinical search architecture for connecting BAA-covered clinical LLM environments to external tools such as web search, APIs, and MCP servers.** A PHI-bearing query is interpreted inside the trusted environment, decomposed into clinical axes, and mapped by embedding retrieval to an allowlisted vocabulary derived from clinical ontologies such as UMLS, SNOMED CT, and RxNorm. The selected concepts are reranked, ordered, and passed to a separate query builder that never receives the original PHI-bearing text.
 
 > **SafeSearch does not redact the original query and send a modified copy. It constructs a new query from an allowlisted semantic representation.**
 
-Large language models have fixed training cutoffs, so information that is newer than their training data must enter at inference through external context. Tools such as web search, clinical APIs, and MCP servers can provide that context, but these tool connections remain limited in healthcare and may sit outside the same trust arrangement as the clinical LLM. SafeSearch separates those two concerns: external tools receive only the reconstructed query, and their returned information and citations come back inside the trusted environment as a **context packet** for the original clinical question at inference.
+External tools provide information that may not exist in an LLM's training data. SafeSearch lets those tools operate on the reconstructed query, then returns the resulting evidence and citations to the trusted environment as context for the original clinical question at inference.
 
-Conceptually, SafeSearch performs **retrieval for representation, followed by retrieval for evidence**:
+**Retrieval for representation, followed by retrieval for evidence:**
 
-`PHI-bearing query → clinical axes → allowlisted concepts → reconstructed query → external search → evidence context packet → original query + context packet at inference`
-
-> **SafeSearch minimizes what leaves the trusted environment, then maximizes useful context at inference.**
+`PHI-bearing query → clinical axes → allowlisted concepts → reconstructed query → external retrieval → evidence context → inference`
 
 ## Why the boundary matters
 
-The [Health Insurance Portability and Accountability Act of 1996 (HIPAA)](https://www.hhs.gov/hipaa/index.html) governs protected health information (**PHI**) handled by covered healthcare organizations and their business associates. A **Business Associate Agreement (BAA)** can authorize a service to process PHI on behalf of a covered entity, but that authorization does not automatically extend to every search engine, API, MCP server, or downstream tool the service may call. [[HHS: Business Associates](https://www.hhs.gov/hipaa/for-professionals/privacy/guidance/business-associates/index.html)] [[HHS: Business Associate Contracts](https://www.hhs.gov/hipaa/for-professionals/covered-entities/sample-business-associate-agreement-provisions/index.html)]
-
-External tools matter because an LLM's internal knowledge is bounded by its training data and knowledge cutoff. At the point of inference, tools can inject newer or otherwise unavailable information into the model's context window. In healthcare, however, access to live web search, clinical APIs, and MCP-style tool servers is still comparatively limited, and the external service providing that information may not be authorized to receive the same PHI as the clinical model.
-
-This creates the architectural problem SafeSearch addresses:
+The [Health Insurance Portability and Accountability Act of 1996 (HIPAA)](https://www.hhs.gov/hipaa/index.html) governs protected health information (**PHI**) handled by covered healthcare organizations and their business associates. A **Business Associate Agreement (BAA)** can authorize a service to process PHI, but that authorization does not automatically extend to every external search engine, API, MCP server, or downstream tool. [[HHS: Business Associates](https://www.hhs.gov/hipaa/for-professionals/privacy/guidance/business-associates/index.html)] [[HHS: Business Associate Contracts](https://www.hhs.gov/hipaa/for-professionals/covered-entities/sample-business-associate-agreement-provisions/index.html)]
 
 > **A clinical LLM may be allowed to see PHI. The external tool it calls may not be. What representation of the clinical question should cross that boundary?**
 
@@ -254,96 +246,4 @@ HIPAA compliance is not an intrinsic property of a model. The architecture assum
 
 ![Cosine similarity between original and reconstructed queries on ASQ-PHI](docs/assets/cosin_sim_query_reconstructed.png)
 
-Cosine similarity between the original clinician query and reconstructed query on the [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi) benchmark. **100% of Safe Harbor PHI was removed from the reconstructed queries.** Mean cosine 0.61, median 0.63. 4% of queries fall below 0.4. No reconstructed query exceeds 0.83.
-
-This cosine is a proxy for how much task-relevant clinical meaning survives reconstruction. Fidelity and privacy trade against each other; the next section explains why.
-
-## Why not just increase granularity?
-
-![The SafeSearch granularity/privacy tension](docs/assets/granularity-privacy-tradeoff.svg)
-
-Increasing vocabulary granularity can preserve more clinical specificity, but doing so can also preserve rarer combinations of quasi-identifying attributes. Individually none of those is necessarily a Safe Harbor identifier. Jointly they can collapse the k-anonymity cell of the disclosed representation below acceptable thresholds. Coarser vocabulary trades semantic fidelity for k-anonymity headroom. Richer vocabulary trades k-anonymity headroom for semantic fidelity.
-
-This trade-off is formalized in:
-
-> Weatherhead J, Hasan A, Weatherhead J, Golovko G, Grant B, Garcia JD, Certuche HS, Powell RP, Abril JM, McCaffrey P. **K-anonymity decay in multi-turn clinical large language model conversations.** *Frontiers in Digital Health*, 2026. doi:[10.3389/fdgth.2026.1832168](https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1832168/full).
-
-Headline finding: **79.9% of simulated patients fall below the small-cell threshold ($k < 5$) by the end of their disclosure sequence**, with the median threshold breach at seven disclosure steps, even when every individual conversational turn complies with HIPAA Safe Harbor de-identification.
-
-## Adversarial trace
-
-Peter McCaffrey's red-team query into the pipeline:
-
-> "guidelines for managing a 47-year-old female who is a Galveston-based vet tech who is also occasionally homeless. She loves Battleship and is a competitive expert. Funny story, we both grew up on the same block on Elderberry street in Dallas! Anyway, can I get some help for her leg pain?"
-
-**What crossed the boundary:**
-
-> "What treatment options are available for leg pain in an adult female?"
-
-Location, occupation, lifestyle, hobby, and the manufactured shared-block claim were all dropped. Only clinically task-relevant axes survived: `intent_terms: treatment`, `anatomy_terms: leg`, `symptom_terms: pain`, `age_bins: adult`, `sex_terms: female`. `phi_leakage.detected = false` on the trace. 30.5 s end-to-end, $0.028.
-
-[View the full adversarial trace](docs/traces/mccaffrey-adversarial-challenge-trace.json)
-
-## v1 prototype
-
-Before axis decomposition, v1 vectorized whole queries against a single embedding index. It had no principled way to separate clinical concepts from surrounding identifying context.
-
-<video src="docs/assets/safesearch-prototype-v1.mov" controls preload="metadata" width="100%"></video>
-
-**[Watch the v1 prototype demo](https://github.com/JamesWeatherhead/SafeSearch/blob/main/docs/assets/safesearch-prototype-v1.mov)**
-
-If inline playback is unavailable in your GitHub client, the link above opens the repository-hosted video directly. GitHub supports `.mov` video files, although playback behavior can vary by client and browser.
-
-## Repository layout
-
-```text
-app/
-├── main.py                       FastAPI, GET /query, Scalar at /scalar
-├── worker.py                     SAQ queue (DummyQueue for PoC)
-├── core/                         config, prompts, service configs, regex
-├── db/                           Tortoise ORM
-└── services/
-    ├── pipeline.py               orchestrator
-    ├── axis_extraction.py        stage 1
-    ├── embeddings.py             stage 2 (Azure embeddings + LRU cache)
-    ├── vector_search.py          stage 3
-    ├── reranking.py              stage 4 (rerank + axis ordering)
-    ├── query_builder.py          stage 5 (safe query reconstruction)
-    ├── perplexity.py             stage 6
-    ├── response_generator.py     stage 7
-    └── phi_checker.py            end-of-pipeline PHI safety check
-docker/, scripts/init-db.sql, docs/{assets,traces}
-```
-
-## Quickstart
-
-```bash
-uv sync
-docker compose -f docker/compose.yaml up -d
-cp .env.example .env    # Azure OpenAI, Perplexity, Postgres
-uv run python manage.py work
-open http://localhost:8000/scalar
-```
-
-## Configuration
-
-Settings load from `.env` via `pydantic-settings`. See [`app/core/config.py`](app/core/config.py) for the full schema.
-
-- **Azure OpenAI:** key, endpoint, API version, chat + embedding deployment names, chat + embedding model names.
-- **Perplexity:** `PPLX_API_KEY`, `PPLX_API_ENDPOINT`.
-- **PostgreSQL:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `DB_CONNECT_TIMEOUT`, `DB_DSN`.
-- **PHI dictionary path:** `PHI_QUERIES_FILE` (optional; regex-only if absent).
-- **Environment name:** `ENVIRONMENT`.
-
-Pipeline tunables such as rerank weights, top-k, cosine threshold, retrieval broadening, response temperatures, and PHI strictness live in [`app/core/service_configs.py`](app/core/service_configs.py).
-
-## Attribution
-
-**James Charl Weatherhead · Jake Craig Weatherhead · Peter A. McCaffrey, MD (PI)**
-
-- Benchmark: [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi)
-- Paper: [K-anonymity decay, *Frontiers in Digital Health*, 2026](https://www.frontiersin.org/journals/digital-health/articles/10.3389/fdgth.2026.1832168/full)
-
-## License
-
-Proprietary. See [`pyproject.toml`](pyproject.toml).
+Cosine similarity between the original clinician query and reconstructed query on the [ASQ-PHI](https://github.com/JamesWeatherhead/asq-phi) benchmark. **100% of Safe Harbor PHI was removed from the reconstructed queries.** Mean cosine 0.61, median 0.63. 4% of queries fall below 

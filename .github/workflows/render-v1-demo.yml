@@ -1,15 +1,16 @@
 name: Render v1 demo
 
 on:
-  push:
-    branches:
-      - main
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   render:
+    if: github.event.issue.title == 'render-v1-demo-trigger'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -59,3 +60,8 @@ Before axis decomposition, v1 vectorized whole queries against a single embeddin
           git add -A
           git commit -m "Render v1 prototype demo"
           git push
+
+      - name: Close trigger issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue close "${{ github.event.issue.number }}" --reason completed

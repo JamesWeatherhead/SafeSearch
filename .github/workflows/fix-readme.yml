@@ -1,0 +1,36 @@
+name: Fix README sections
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-readme.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore full README and remove redundant sections
+        shell: bash
+        run: |
+          git show 43bb2743c7d40358bacc773847542b337a60a21e:README.md > README.md
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('README.md')
+          s = p.read_text()
+          s = s.replace('**Retrieval for representation, followed by retrieval for evidence:**\n\n`PHI-bearing query → clinical axes → allowlisted concepts → reconstructed query → external retrieval → evidence context → inference`\n\n', '')
+          start = s.index('<details>\n<summary><strong>Model and BAA-boundary map</strong></summary>')
+          end = s.index('</details>', start) + len('</details>')
+          s = s[:start] + s[end:].lstrip('\n')
+          p.write_text(s)
+          PY
+          git config user.name "JamesWeatherhead"
+          git config user.email "139081462+JamesWeatherhead@users.noreply.github.com"
+          git add README.md
+          git commit -m "Clean up README sections"
+          git push

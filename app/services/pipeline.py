@@ -57,15 +57,13 @@ class PipelineService:
             else:
                 logger.warning("No reranked hits or axis order available for PHI-safe query building")
         except Exception as e:
-            logger.error(f"PHI-safe query building failed: {e}. Falling back to original query.")
+            logger.error(f"PHI-safe query building failed: {e}")
 
-        # Use PHI-safe query if available, otherwise fall back to original query
-        search_query = phi_safe_query if phi_safe_query else user_query
-        
-        if phi_safe_query:
-            logger.info("Using PHI-safe query for Perplexity search")
-        else:
-            logger.warning("Using original user query for Perplexity search (PHI-safe query unavailable)")
+        if not phi_safe_query:
+            raise RuntimeError("PHI-safe query unavailable; external search aborted.")
+
+        search_query = phi_safe_query
+        logger.info("Using PHI-safe query for Perplexity search")
 
         evidence = self.perplexity.web_search(refined_query=search_query)
 

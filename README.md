@@ -1,46 +1,30 @@
 # SafeSearch
 
-**SafeSearch is a privacy-preserving clinical search architecture that converts a PHI-bearing clinician query into a new query built from an allowlisted clinical vocabulary before external web search.** Inside the BAA-covered environment, the original query is decomposed into structured clinical axes, mapped by embedding-based retrieval to approved concepts drawn from clinical ontologies, and reranked in the context of the original question. Those selected concepts are then passed, in clinically meaningful order, to a separate query-construction step that does **not** receive the original PHI-bearing text.
+**SafeSearch is a privacy-preserving clinical search architecture for using external retrieval from a BAA-covered clinical LLM environment.** A PHI-bearing clinician query is interpreted inside the trusted environment, decomposed into clinical axes, and mapped by embedding retrieval to an allowlisted vocabulary derived from clinical ontologies such as UMLS, SNOMED CT, and RxNorm. The selected concepts are reranked, placed in clinically meaningful order, and passed to a separate query builder that never receives the original PHI-bearing text.
 
-> [!IMPORTANT]
-> **The key privacy property is separation of interpretation from release.** LLMs may use the original clinical context inside the trusted environment to understand meaning, disambiguate concepts, and choose the best representations, but the outbound query generator sees only the controlled concepts retrieved from the allowlisted vector store. Although the LLM components are nondeterministic, the semantic candidates available to outbound reconstruction are deterministically selected from a predefined allowlist of approved clinical terms.
+The key privacy property is **separation of interpretation from release**. The original query can be used inside the BAA-covered environment to preserve clinical meaning, but the outbound query is reconstructed only from concepts retrieved from the controlled vocabulary. Because source identifiers are not present in that vocabulary and the reconstruction model never receives the original text, there is no direct information path for the patient's original PHI to propagate into the external query.
 
-**Conceptually, SafeSearch performs retrieval for representation, followed by retrieval for evidence.** The first retrieval maps sensitive clinical language onto an approved semantic vocabulary. The second uses the reconstructed query to search for current medical evidence. Evidence then returns to the trusted environment, where the original clinical context can be used again to generate the final answer.
+> **SafeSearch does not redact the original query and send a modified copy. It constructs a new query from an allowlisted semantic representation.**
 
-## The boundary problem
+Conceptually, SafeSearch performs **retrieval for representation, followed by retrieval for evidence**:
 
-The [Health Insurance Portability and Accountability Act of 1996 (HIPAA)](https://www.hhs.gov/hipaa/index.html) establishes federal requirements governing the privacy and security of **protected health information (PHI)** handled by regulated healthcare organizations. Under the HIPAA Rules, covered entities include health plans, healthcare clearinghouses, and certain healthcare providers. Organizations performing functions or services on their behalf that involve creating, receiving, maintaining, or transmitting PHI may become **business associates**. [[HHS: Covered Entities and Business Associates](https://www.hhs.gov/hipaa/for-professionals/covered-entities/index.html)] [[HHS: Business Associates](https://www.hhs.gov/hipaa/for-professionals/privacy/guidance/business-associates/index.html)]
+`PHI-bearing query → clinical axes → allowlisted concepts → reconstructed query → external evidence → original context restored`
 
-A covered entity may permit a business associate to handle PHI when the required safeguards and permitted uses are established through a **Business Associate Agreement (BAA)** or other qualifying written arrangement. A BAA does not make a model intrinsically "HIPAA compliant". It establishes obligations between regulated parties, while technical configuration, access controls, security safeguards, and organizational practices remain necessary. [[HHS: Business Associate Contracts](https://www.hhs.gov/hipaa/for-professionals/covered-entities/sample-business-associate-agreement-provisions/index.html)]
+## Why the boundary matters
 
-This creates an important instability for modern clinical AI: **the LLM processing a clinician's question may operate within an environment authorized to receive PHI, while a search engine, API, or other downstream tool called by that LLM may not operate under the same arrangement.** The privacy question therefore changes at the tool boundary. It is no longer only *Can this LLM process PHI?* It becomes:
+The [Health Insurance Portability and Accountability Act of 1996 (HIPAA)](https://www.hhs.gov/hipaa/index.html) governs protected health information (**PHI**) handled by covered healthcare organizations and their business associates. A **Business Associate Agreement (BAA)** can authorize a service to process PHI on behalf of a covered entity, but that authorization does not automatically extend to every search engine, API, or downstream tool the service may call. [[HHS: Business Associates](https://www.hhs.gov/hipaa/for-professionals/privacy/guidance/business-associates/index.html)] [[HHS: Business Associate Contracts](https://www.hhs.gov/hipaa/for-professionals/covered-entities/sample-business-associate-agreement-provisions/index.html)]
 
-> **What representation of the clinician's intent should be allowed to leave the trusted environment at all?**
+This creates the architectural problem SafeSearch addresses:
+
+> **A clinical LLM may be allowed to see PHI. The external tool it calls may not be. What representation of the clinical question should cross that boundary?**
 
 ![The BAA boundary problem](docs/assets/why-safesearch-boundary.png)
 
-Throughout this repository, **BAA boundary** is shorthand for that application trust boundary. Services authorized under the applicable institutional arrangements to receive PHI are treated as inside the trusted environment, while external services without that authorization are treated as outside it. A BAA is a legal and contractual relationship, not a literal network perimeter.
+HIPAA recognizes two methods of de-identification under [45 CFR § 164.514(b)](https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html): **Safe Harbor**, which removes specified identifiers, and **Expert Determination**, which uses statistical and scientific analysis to establish a very small risk of identification.
 
-### De-identification under HIPAA
+SafeSearch addresses a related but different engineering problem. Instead of asking only **which parts of the source text should be removed or replaced**, it asks **whether the source representation needs to leave the trusted environment at all**.
 
-HIPAA provides two methods for treating health information as de-identified under **45 CFR § 164.514(b)**: **Safe Harbor** and **Expert Determination**. [[HHS: Methods for De-identification of PHI](https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html)]
-
-- **Safe Harbor:** removes specified identifiers and requires that the covered entity have no actual knowledge that the remaining information could be used, alone or in combination with other information, to identify the individual.
-- **Expert Determination:** uses a risk-based approach in which a person with appropriate statistical and scientific expertise determines, with documentation, that the risk is *very small* that the information could be used, alone or in combination with other reasonably available information, to identify the individual.
-
-Both approaches answer an important question: **when can health information be treated as de-identified?**
-
-However, tool-using clinical AI creates a related but different engineering problem. A clinician does not necessarily need to transmit a de-identified *copy* of the original question to an external system. The external system needs enough clinical information to perform its task.
-
-SafeSearch is designed around that distinction.
-
-> **Conventional question:** Which pieces of the original text must be removed or replaced?
->
-> **SafeSearch question:** What task-relevant clinical representation needs to cross the boundary at all?
-
-The result is **constrained semantic reconstruction**: sensitive clinical language remains available within the trusted environment, while the representation released for external retrieval is reconstructed from controlled clinical concepts selected for the downstream task.
-
-**SafeSearch does not minimize clinical context everywhere. It minimizes the representation released across the trust boundary.**
+That is the basis of **constrained semantic reconstruction**.
 
 ## Constrained semantic reconstruction
 
@@ -61,9 +45,7 @@ Conventional de-identification generally produces a modified copy of the source 
 
 ## Architecture at a glance
 
-**Clinical query → extract concepts → embed → retrieve controlled clinical terms → rerank → reconstruct query → retrieve external evidence → re-contextualize answer**
-
-Seven conceptual stages plus a PHI safety check:
+Seven stages implement this transformation: interpretation inside the trusted environment, controlled semantic reconstruction at the boundary, and evidence retrieval outside it.
 
 1. **Clinical axis extraction**  
    Azure OpenAI, trusted. Decomposes the clinical query into 16 clinical axes.
@@ -108,40 +90,6 @@ This is conventional information retrieval.
 
 > [!NOTE]
 > **Retrieval for representation, followed by retrieval for evidence.** Conventional retrieval-augmented generation (RAG) retrieves documents or chunks to provide additional knowledge to an LLM. SafeSearch's internal vector retrieval instead retrieves candidate representations used to transform the query itself. Only after that transformation does SafeSearch perform external retrieval for clinical evidence.
-
-## What crosses the boundary?
-
-```text
-TRUSTED / BAA-COVERED ENVIRONMENT
-
-Original query
-    ↓
-Axis extraction
-    ↓
-Embeddings
-    ↓
-Controlled vocabulary retrieval
-    ↓
-Semantic reranking + axis ordering
-    ↓
-Safe query reconstruction
-
-========== TRUST BOUNDARY ==========
-
-Reconstructed query
-    ↓
-External evidence retrieval
-    ↓
-Evidence + citations
-    ↓
-Back inside trusted environment
-    ↓
-Original context + selected concepts + evidence
-    ↓
-Final clinical answer
-```
-
-> **The original clinical context is retained where it is trusted. The representation released externally is minimized to what is needed for the downstream retrieval task.**
 
 ## Technical walkthrough
 

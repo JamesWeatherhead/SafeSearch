@@ -1,10 +1,10 @@
 # SafeSearch
 
-**SafeSearch is a privacy-preserving clinical search architecture for connecting BAA-covered clinical LLM environments to external tools such as web search, APIs, and MCP servers.** A PHI-bearing query is interpreted inside the trusted environment, decomposed into clinical axes, and mapped by embedding retrieval to an allowlisted vocabulary derived from clinical ontologies such as UMLS, SNOMED CT, and RxNorm. The selected concepts are reranked, ordered, and passed to a separate query builder that never receives the original PHI-bearing text.
+**SafeSearch is a privacy-preserving clinical search architecture for connecting BAA-covered Azure OpenAI deployments to external tools such as web search, APIs, and MCP servers.** A PHI-bearing query is interpreted inside the BAA-covered Azure environment, decomposed into clinical axes, and mapped by embedding retrieval to an allowlisted vocabulary derived from clinical ontologies such as UMLS, SNOMED CT, and RxNorm. The selected concepts are reranked, ordered, and passed to a separate query builder that never receives the original PHI-bearing text.
 
 > **SafeSearch does not redact the original query and send a modified copy. It constructs a new query from an allowlisted semantic representation.**
 
-**LLMs have fixed knowledge cutoffs determined by their training data. To access current or otherwise unavailable information at inference, they must be augmented with external tools such as web search, APIs, and MCP servers.** SafeSearch lets those tools operate on the reconstructed query, then returns the resulting evidence and citations to the trusted environment as context for the original clinical question at inference.
+**LLMs have fixed knowledge cutoffs determined by their training data. To access current or otherwise unavailable information at inference, they must be augmented with external tools such as web search, APIs, and MCP servers.** SafeSearch lets those tools operate on the reconstructed query, then returns the resulting evidence and citations to the BAA-covered Azure environment as context for the original clinical question at inference.
 
 **Retrieval for representation, followed by retrieval for evidence:**
 
@@ -12,15 +12,17 @@
 
 ## Why the boundary matters
 
-The [Health Insurance Portability and Accountability Act of 1996 (HIPAA)](https://www.hhs.gov/hipaa/index.html) governs protected health information (**PHI**) handled by covered healthcare organizations and their business associates. A **Business Associate Agreement (BAA)** can authorize a service to process PHI, but that authorization does not automatically extend to every external search engine, API, MCP server, or downstream tool. [[HHS: Business Associates](https://www.hhs.gov/hipaa/for-professionals/privacy/guidance/business-associates/index.html)] [[HHS: Business Associate Contracts](https://www.hhs.gov/hipaa/for-professionals/covered-entities/sample-business-associate-agreement-provisions/index.html)]
+The [Health Insurance Portability and Accountability Act of 1996 (HIPAA)](https://www.hhs.gov/hipaa/index.html) governs protected health information (**PHI**) handled by covered healthcare organizations and their business associates. A **Business Associate Agreement (BAA)** establishes how a business associate may create, receive, maintain, or transmit PHI on behalf of a covered entity. Microsoft states that its HIPAA BAA applies to customers subject to HIPAA using in-scope Azure services. Microsoft also states that prompts, completions, embeddings, and training data submitted to Models sold by Azure are not made available to OpenAI or other model providers and are not used to train generative foundation models without the customer's permission or instruction. [[Microsoft: HIPAA on Azure](https://learn.microsoft.com/en-us/azure/compliance/offerings/offering-hipaa-us)] [[Microsoft: Data privacy for Models sold by Azure](https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy)]
 
-> **A clinical LLM may be allowed to see PHI. The external tool it calls may not be. What representation of the clinical question should cross that boundary?**
+SafeSearch therefore keeps the original PHI-bearing query inside the institution's BAA-covered Azure OpenAI environment. An external search engine, API, MCP server, or other tool that is not covered by the applicable BAA should not receive that same PHI-bearing query.
+
+> **Azure OpenAI can process PHI under the institution's Microsoft HIPAA BAA. An external tool outside that agreement should not receive the same PHI-bearing query. What representation should cross instead?**
 
 ![The BAA boundary problem](docs/assets/why-safesearch-boundary.png)
 
 HIPAA recognizes two methods of de-identification under [45 CFR § 164.514(b)](https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html): **Safe Harbor**, which removes specified identifiers, and **Expert Determination**, which uses statistical and scientific analysis to establish a very small risk of identification.
 
-SafeSearch addresses a related but different engineering problem. Instead of asking only **which parts of the source text should be removed or replaced**, it asks **whether the source representation needs to leave the trusted environment at all**.
+SafeSearch addresses a related but different engineering problem. Instead of asking only **which parts of the source text should be removed or replaced**, it asks **whether the source representation needs to leave the BAA-covered environment at all**.
 
 That is the basis of **constrained semantic reconstruction**.
 
@@ -43,28 +45,28 @@ Conventional de-identification generally produces a modified copy of the source 
 
 ## Architecture at a glance
 
-Seven stages implement this transformation: interpretation inside the trusted environment, controlled semantic reconstruction at the boundary, external evidence retrieval, and context engineering at inference.
+Seven stages implement this transformation: interpretation inside the BAA-covered Azure environment, controlled semantic reconstruction at the boundary, external evidence retrieval, and context engineering at inference.
 
 1. **Clinical axis extraction**  
-   Azure OpenAI, trusted. Decomposes the clinical query into 16 clinical axes.
+   Azure OpenAI, BAA-covered. Decomposes the clinical query into 16 clinical axes.
 
 2. **Embeddings**  
-   Azure OpenAI, trusted. Converts each extracted concept into a semantic vector.
+   Azure OpenAI, BAA-covered. Converts each extracted concept into a semantic vector.
 
 3. **Controlled vocabulary retrieval**  
-   PostgreSQL + pgvector, trusted. Retrieves the nearest controlled clinical terms for each axis.
+   PostgreSQL + pgvector, inside the BAA-covered environment. Retrieves the nearest controlled clinical terms for each axis.
 
 4. **Semantic reranking and axis ordering**  
-   Azure OpenAI + hybrid score, trusted. Selects the best candidates and determines clinically meaningful ordering.
+   Azure OpenAI + hybrid score, BAA-covered. Selects the best candidates and determines clinically meaningful ordering.
 
 5. **Safe query reconstruction**  
-   Azure OpenAI, trusted. Reconstructs a natural-language search query from the selected controlled terms.
+   Azure OpenAI, BAA-covered. Reconstructs a natural-language search query from the selected controlled terms.
 
 6. **External evidence retrieval**  
    Perplexity `sonar-pro`, external. Retrieves current clinical evidence using the reconstructed query and returns evidence with citations.
 
 7. **Context engineering at inference**  
-   Azure OpenAI, trusted. Combines the original clinical query with the returned evidence context packet at the point of inference to generate the clinician-facing answer.
+   Azure OpenAI, BAA-covered. Combines the original clinical query with the returned evidence context packet at the point of inference to generate the clinician-facing answer.
 
 **PHI safety check.** An end-of-pipeline observability layer flags whether known PHI patterns appear in the original query, reconstructed query, or generated answer. See [`app/services/phi_checker.py`](app/services/phi_checker.py).
 
@@ -72,7 +74,7 @@ Seven stages implement this transformation: interpretation inside the trusted en
 
 ### 1. Retrieval for representation
 
-Inside the trusted environment:
+Inside the BAA-covered Azure environment:
 
 `clinical concept → embedding → pgvector → controlled clinical term`
 
@@ -84,7 +86,7 @@ After reconstruction:
 
 `reconstructed query → external search → evidence + citations → context packet`
 
-This second retrieval brings current information back into the trusted environment for use at inference.
+This second retrieval brings current information back into the BAA-covered Azure environment for use at inference.
 
 > [!NOTE]
 > **Retrieval for representation, followed by retrieval for evidence.** Conventional retrieval-augmented generation (RAG) retrieves documents or chunks to provide additional knowledge to an LLM. SafeSearch's internal vector retrieval instead retrieves candidate representations used to transform the query itself. Only after that transformation does SafeSearch perform external retrieval, package the returned evidence and citations as context, and provide that context to the original clinical query at inference.
@@ -102,7 +104,7 @@ Whole-query embedding would collapse everything into a single vector and search 
 
 *Example.* A query about "guidelines for a 47-year-old female with leg pain, asking about treatment" is decomposed into roughly `age_bins: [adult]`, `sex_terms: [female]`, `anatomy_terms: [leg]`, `symptom_terms: [pain]`, `intent_terms: [treatment]`.
 
-The extraction call runs at temperature 0.0 with JSON-mode enforced. Post-processing enriches `intent_terms` via a controlled synonym map, normalizes `age_bins` from age or DOB regexes, expands a small set of medication umbrellas into exemplar drugs, and drops substring duplicates. The original query is available at this stage because processing occurs on the trusted side of the boundary.
+The extraction call runs at temperature 0.0 with JSON-mode enforced. Post-processing enriches `intent_terms` via a controlled synonym map, normalizes `age_bins` from age or DOB regexes, expands a small set of medication umbrellas into exemplar drugs, and drops substring duplicates. The original query is available at this stage because processing occurs inside the BAA-covered Azure environment.
 
 Sources: [`app/services/axis_extraction.py`](app/services/axis_extraction.py), [`app/core/prompts.py`](app/core/prompts.py) (`AxisExtractionPrompts.SYSTEM_EXTRACTION`), [`app/core/data_mappings.py`](app/core/data_mappings.py).
 
@@ -183,7 +185,7 @@ The reconstructed query is sent to the Perplexity `sonar-pro` chat completion en
 
 `pubmed.ncbi.nlm.nih.gov`, `jamanetwork.com`, `nejm.org`, `thelancet.com`, `bmj.com`, `annals.org`, `acc.org`, `ahajournals.org`, `escardio.org`, `nice.org.uk`.
 
-The endpoint returns a summary and citation list. SafeSearch treats that returned information as an evidence context packet that can be brought back inside the trusted environment for inference against the original clinical query.
+The endpoint returns a summary and citation list. SafeSearch treats that returned information as an evidence context packet that can be brought back inside the BAA-covered Azure environment for inference against the original clinical query.
 
 > **Retrieval #1 chooses a representation. Retrieval #2 retrieves evidence for the inference context.**
 
@@ -194,7 +196,7 @@ Source: [`app/services/perplexity.py`](app/services/perplexity.py).
 <details>
 <summary><strong>Stage 7: Context engineering at inference</strong></summary>
 
-The evidence returned by external search is brought back inside the trusted environment as a context packet containing the retrieved information and citations. The configured Azure OpenAI chat deployment then receives:
+The evidence returned by external search is brought back inside the BAA-covered Azure environment as a context packet containing the retrieved information and citations. The configured Azure OpenAI chat deployment then receives:
 
 - the original clinician query,
 - the selected controlled clinical concepts by axis, and
@@ -202,7 +204,7 @@ The evidence returned by external search is brought back inside the trusted envi
 
 These inputs are combined at the point of inference to generate the clinician-facing answer. This matters because the model's internal knowledge is bounded by its training data and knowledge cutoff. External tools provide a way to inject current or otherwise unavailable information into the model's context window without sending the original PHI-bearing query to those tools.
 
-> **SafeSearch minimizes what leaves the trusted environment, then maximizes useful context at inference.**
+> **SafeSearch minimizes what leaves the BAA-covered environment, then maximizes useful context at inference.**
 
 Source: [`app/services/response_generator.py`](app/services/response_generator.py).
 
@@ -215,17 +217,17 @@ After reconstruction and response generation, SafeSearch performs an additional 
 Source: [`app/services/phi_checker.py`](app/services/phi_checker.py).
 
 <details>
-<summary><strong>Model and trust-boundary map</strong></summary>
+<summary><strong>Model and BAA-boundary map</strong></summary>
 
-- **Axis extraction:** Azure OpenAI chat deployment. Sees the original query. Trusted.
-- **Concept embedding:** Azure OpenAI embedding deployment. Sees extracted concepts. Trusted.
-- **Semantic candidate rating:** Azure OpenAI chat deployment. Sees the original query as scoring context. Trusted.
-- **Axis ordering:** Azure OpenAI chat deployment. Sees the original query as scoring context. Trusted.
-- **Query reconstruction:** Azure OpenAI chat deployment. Receives ordered controlled terms only, not the original query. Trusted.
-- **External evidence retrieval:** Perplexity `sonar-pro`. Receives the reconstructed query. External.
-- **Final answer generation:** Azure OpenAI chat deployment. Receives the original query, selected concepts, and returned evidence context packet. Trusted.
+- **Axis extraction:** Azure OpenAI chat deployment. Sees the original query. BAA-covered Azure environment.
+- **Concept embedding:** Azure OpenAI embedding deployment. Sees extracted concepts. BAA-covered Azure environment.
+- **Semantic candidate rating:** Azure OpenAI chat deployment. Sees the original query as scoring context. BAA-covered Azure environment.
+- **Axis ordering:** Azure OpenAI chat deployment. Sees the original query as scoring context. BAA-covered Azure environment.
+- **Query reconstruction:** Azure OpenAI chat deployment. Receives ordered controlled terms only, not the original query. BAA-covered Azure environment.
+- **External evidence retrieval:** Perplexity `sonar-pro`. Receives the reconstructed query. External to the Azure BAA boundary.
+- **Final answer generation:** Azure OpenAI chat deployment. Receives the original query, selected concepts, and returned evidence context packet. BAA-covered Azure environment.
 
-HIPAA compliance is not an intrinsic property of a model. The architecture assumes appropriately configured Azure OpenAI services operating under the institution's applicable BAA and safeguards.
+The implementation assumes appropriately configured Azure OpenAI services used under the institution's applicable Microsoft HIPAA BAA and safeguards. Microsoft states that customer prompts, completions, embeddings, and training data for Models sold by Azure are not used to train generative foundation models without permission or instruction. [[Microsoft: Data privacy for Models sold by Azure](https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy)]
 
 </details>
 
